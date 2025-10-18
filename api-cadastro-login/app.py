@@ -1,4 +1,6 @@
 from flask import Flask, request, jsonify
+# import do banco e do modelo (classe) do outro arquivo
+from models import db, Usuario 
 
 # cria um objeto flask, que vai ser o app
 app = Flask(__name__)
@@ -7,18 +9,19 @@ app = Flask(__name__)
 app.config['JSON_AS_ASCII']=False
 # se der errado, descomente o debaixo
 # app.json.ensure.ascii = False
-# usuario(id, nome, email, senha)
-usuarios = [
-    {'id': 1, 'nome': 'Raphamel', 
-     'email':'raphamengo@senai.br', 
-     'senha':'Flamengo2019'},
-    {'id': 2, 'nome': 'David', 
-     'email':'davidvarao@senai.br',
-     'senha':'Varao123'},
-    {'id': 3, 'nome': 'Geovanni',
-     'email':'geo@vanni.br', 
-     'senha':'PizzaioloTricolor'}
-]
+
+# Configuração com o banco 
+# Hoje: SQLite // Sexta: MySQL
+app.config['SQLALCHEMY_DATABASE_URI'] = \
+'sqlite:///pizzaiolo.db'
+
+# Desativar o sistema de rastreamento de modificações
+app.config['SQLALCHEMY_TRACK_MODIFICATION'] = False
+
+# Vamos inicializar a 'caixinha magica' (BD) com o app
+db.init_app(app)
+
+
 
 # pq não estamos usando BD
 # Ideia de autoincrement
@@ -109,9 +112,6 @@ def validar_usuario(dados):
         'senha': senha
     }
     return True, None, dados_validados
-
-
-     
 
 # Rota padrão - Index - Landpage
 @app.route('/')
@@ -313,7 +313,50 @@ def atualizar_usuario(id_usuario):
         'usuario': user
     }), 200
 
+# comando CLI (linha de comando) para popular o banco
+@app.cli.command()
+def popular_banco():
+    """
+    Popula o banco com usuários pré "fabricados"\n
+    Uso: flask --app app popular_banco
+
+    """
+    with app.app_context():
+        # usuario(id, nome, email, senha)
+        usuarios = [
+            {'nome': 'Raphamel', 
+             'email':'raphamengo@senai.br', 
+             'senha':'Flamengo2019'},
+            {'nome': 'David', 
+             'email':'davidvarao@senai.br',
+             'senha':'Varao123'},
+            {'nome': 'Geovanni',
+             'email':'geo@vanni.br', 
+             'senha':'PizzaioloTricolor'}
+        ]
+
+        for user in usuarios:
+            # verificar se o usuario existe no banco
+            usuario_existente = \
+            Usuario.query.filter_by(email=user['email']).first()
+
+            if not usuario_existente:
+                # Se o email não está no banco
+                # então o usuario não existe
+                # logo, criarei o usuario
+
+                # Isso "desempacota" o dicionario
+                # Isso é o mesmo que fazer:
+                # Usuario(nome=user['nome'], email=user['email'], ...)
+                usuario = Usuario(**user)
+                db.session.add(usuario)
+
+        db.session.commit()
+        print('Banco populado com sucesso')
+
 
 # iniciar o servidor -> porta padrão 5000
 if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()
     app.run(debug=True)
